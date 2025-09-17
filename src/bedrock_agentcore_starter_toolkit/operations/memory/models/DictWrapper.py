@@ -3,7 +3,7 @@ from typing import Any, Dict
 
 class DictWrapper:
     def __init__(self, data: Dict[str, Any]):
-        self._data = data
+        self._data = data if data is not None else {}
 
     def __getattr__(self, name: str) -> Any:
         """Provides direct access to data fields as attributes"""

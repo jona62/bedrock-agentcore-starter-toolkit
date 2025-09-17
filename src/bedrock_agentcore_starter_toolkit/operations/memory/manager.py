@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional
 from .models.Memory import Memory
 from .models.MemorySummary import MemorySummary
 from .models.MemoryStrategy import MemoryStrategy
-from .constants import CUSTOM_CONSOLIDATION_WRAPPER_KEYS, CUSTOM_EXTRACTION_WRAPPER_KEYS, DEFAULT_NAMESPACES, EXTRACTION_WRAPPER_KEYS, MemoryStatus, MemoryStrategyStatus, MemoryStrategyTypeEnum, OverrideType, StrategyType
+from .constants import DEFAULT_NAMESPACES, MemoryStatus, MemoryStrategyStatus, OverrideType, StrategyType
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +22,7 @@ class MemoryManager:
     """
     def __init__(self, region_name: str):
         self.region_name = region_name
-        self._control_plane_client = boto3.client("bedrock-agentcore-control", region_name=region_name, endpoint_url="https://gamma.us-east-1.gmcp.genesis-primitives.aws.dev")
+        self._control_plane_client = boto3.client("bedrock-agentcore-control", region_name=region_name)
 
         # AgentCore Memory control plane methods
         self._ALLOWED_CONTROL_PLANE_METHODS = {
@@ -92,24 +92,27 @@ class MemoryManager:
     def _wrap_configuration(
         self, config: Dict[str, Any], strategy_type: str, override_type: Optional[str] = None
     ) -> Dict[str, Any]:
-        """Wrap configuration based on strategy type."""
+        """Wrap configuration based on strategy type using new enum methods."""
         wrapped_config = {}
 
         if "extraction" in config:
             extraction = config["extraction"]
 
             if any(key in extraction for key in ["triggerEveryNMessages", "historicalContextWindowSize"]):
-                strategy_type_enum = MemoryStrategyTypeEnum(strategy_type)
-
                 if strategy_type == "SEMANTIC":
-                    wrapped_config["extraction"] = {EXTRACTION_WRAPPER_KEYS[strategy_type_enum]: extraction}
+                    wrapper_key = StrategyType.SEMANTIC.extraction_wrapper_key()
+                    if wrapper_key:
+                        wrapped_config["extraction"] = {wrapper_key: extraction}
                 elif strategy_type == "USER_PREFERENCE":
-                    wrapped_config["extraction"] = {EXTRACTION_WRAPPER_KEYS[strategy_type_enum]: extraction}
+                    wrapper_key = StrategyType.USER_PREFERENCE.extraction_wrapper_key()
+                    if wrapper_key:
+                        wrapped_config["extraction"] = {wrapper_key: extraction}
                 elif strategy_type == "CUSTOM" and override_type:
                     override_enum = OverrideType(override_type)
-                    if override_type in ["SEMANTIC_OVERRIDE", "USER_PREFERENCE_OVERRIDE"]:
+                    wrapper_key = override_enum.extraction_wrapper_key()
+                    if wrapper_key and override_type in ["SEMANTIC_OVERRIDE", "USER_PREFERENCE_OVERRIDE"]:
                         wrapped_config["extraction"] = {
-                            "customExtractionConfiguration": {CUSTOM_EXTRACTION_WRAPPER_KEYS[override_enum]: extraction}
+                            "customExtractionConfiguration": {wrapper_key: extraction}
                         }
             else:
                 wrapped_config["extraction"] = extraction
@@ -120,19 +123,19 @@ class MemoryManager:
             raw_keys = ["triggerEveryNMessages", "appendToPrompt", "modelId"]
             if any(key in consolidation for key in raw_keys):
                 if strategy_type == "SUMMARIZATION":
-                    if "triggerEveryNMessages" in consolidation:
+                    wrapper_key = StrategyType.SUMMARY.consolidation_wrapper_key()
+                    if wrapper_key and "triggerEveryNMessages" in consolidation:
                         wrapped_config["consolidation"] = {
-                            "summaryConsolidationConfiguration": {
+                            wrapper_key: {
                                 "triggerEveryNMessages": consolidation["triggerEveryNMessages"]
                             }
                         }
                 elif strategy_type == "CUSTOM" and override_type:
                     override_enum = OverrideType(override_type)
-                    if override_enum in CUSTOM_CONSOLIDATION_WRAPPER_KEYS:
+                    wrapper_key = override_enum.consolidation_wrapper_key()
+                    if wrapper_key:
                         wrapped_config["consolidation"] = {
-                            "customConsolidationConfiguration": {
-                                CUSTOM_CONSOLIDATION_WRAPPER_KEYS[override_enum]: consolidation
-                            }
+                            "customConsolidationConfiguration": {wrapper_key: consolidation}
                         }
             else:
                 wrapped_config["consolidation"] = consolidation
@@ -321,7 +324,7 @@ class MemoryManager:
         try:
             response = self._control_plane_client.get_memory(memoryId=memory_id).get("memory", {})
             logger.info(f"  ✅ Found memory: {memory_id}")
-            return Memory(memory=response)
+            return Memory(response)
         except ClientError as e:
             logger.error(f"  ❌ Error retrieving memory: {e}")
             raise
@@ -704,7 +707,7 @@ class MemoryManager:
             )
 
             logger.info("Updated memory strategies for: %s", memory_id)
-            return Memory(memory=response["memory"])
+            return Memory(response["memory"])
 
         except ClientError as e:
             logger.error("Failed to update memory strategies: %s", e)
@@ -817,7 +820,7 @@ class MemoryManager:
                     
                     logger.info("Memory %s is ACTIVE and all strategies are in terminal states (took %d seconds)", 
                               memory_id, elapsed)
-                    return Memory(memory=memory)
+                    return Memory(memory)
 
                 # Wait before next check
                 time.sleep(poll_interval)

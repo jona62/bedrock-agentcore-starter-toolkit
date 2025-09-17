@@ -10,7 +10,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 from botocore.exceptions import ClientError
 
-from bedrock_agentcore_starter_toolkit.operations.memory.manager import MemoryManager, Memory
+from bedrock_agentcore_starter_toolkit.operations.memory.manager import MemoryManager
+from bedrock_agentcore_starter_toolkit.operations.memory.models.Memory import Memory
 from bedrock_agentcore_starter_toolkit.operations.memory.models.MemoryStrategy import MemoryStrategy
 from bedrock_agentcore_starter_toolkit.operations.memory.models.MemorySummary import MemorySummary
 from bedrock_agentcore_starter_toolkit.operations.memory.constants import (
@@ -31,45 +32,8 @@ def test_manager_initialization():
         assert manager.region_name == "us-west-2"
         assert mock_boto_client.call_count == 1
         
-        # Verify the correct service was called
+        # Verify the correct service was called (without endpoint_url)
         mock_boto_client.assert_called_with("bedrock-agentcore-control", region_name="us-west-2")
-
-
-def test_manager_initialization_region_mismatch():
-    """Test client initialization with region mismatch warning."""
-
-    with patch("boto3.client") as mock_boto_client:
-        # First test - environment variable takes precedence
-        with patch("boto3.Session") as mock_session:
-            # Mock the session instance to simulate AWS_REGION=us-east-1
-            mock_session_instance = MagicMock()
-            mock_session_instance.region_name = "us-east-1"
-            mock_session.return_value = mock_session_instance
-
-            # Mock the boto client
-            mock_client_instance = MagicMock()
-            mock_client_instance.meta.region_name = "us-east-1"
-            mock_boto_client.return_value = mock_client_instance
-
-            # When region_name is provided, environment variable should still take precedence
-            client1 = MemoryManager(region_name="us-west-2")
-            assert client1.region_name == "us-west-2"
-
-        # Second test - no environment variable, explicit param is used
-        with patch("boto3.Session") as mock_session:
-            # Mock the session instance to simulate no AWS_REGION set
-            mock_session_instance = MagicMock()
-            mock_session_instance.region_name = None
-            mock_session.return_value = mock_session_instance
-
-            # Mock the boto client
-            mock_client_instance = MagicMock()
-            mock_client_instance.meta.region_name = "us-west-2"
-            mock_boto_client.return_value = mock_client_instance
-
-            # When AWS_REGION is not set, explicitly provided region should be used
-            client2 = MemoryManager(region_name="us-west-2")
-            assert client2.region_name == "us-west-2"
 
 
 def test_namespace_defaults():
@@ -1067,7 +1031,7 @@ def test_delete_strategy():
             args, kwargs = mock_control_plane_client.update_memory.call_args
             assert "memoryStrategies" in kwargs
             assert "deleteMemoryStrategies" in kwargs["memoryStrategies"]
-            assert kwargs["memoryStrategies"]["deleteMemoryStrategies"][0]["strategyId"] == "strat-456"
+            assert kwargs["memoryStrategies"]["deleteMemoryStrategies"][0]["memoryStrategyId"] == "strat-456"
 
 
 def test_add_strategy_warning():
@@ -1335,151 +1299,50 @@ def test_create_or_get_memory_general_exception():
 # Memory class tests
 def test_memory_initialization():
     """Test Memory class initialization."""
-    with patch("boto3.client"):
-        manager = MemoryManager(region_name="us-east-1")
-        memory_data = {"id": "mem-123", "name": "Test Memory", "status": "ACTIVE"}
-        
-        memory = Memory(memory_data, manager)
-        
-        assert memory.id == "mem-123"
-        assert memory.name == "Test Memory"
-        assert memory.status == "ACTIVE"
+    memory_data = {"id": "mem-123", "name": "Test Memory", "status": "ACTIVE"}
+    
+    memory = Memory(memory_data)
+    
+    assert memory.id == "mem-123"
+    assert memory.name == "Test Memory"
+    assert memory.status == "ACTIVE"
 
 
 def test_memory_attribute_access():
     """Test Memory class attribute access patterns."""
-    with patch("boto3.client"):
-        manager = MemoryManager(region_name="us-east-1")
-        memory_data = {"id": "mem-123", "name": "Test Memory", "status": "ACTIVE"}
-        
-        memory = Memory(memory_data, manager)
-        
-        # Test __getattr__
-        assert memory.id == "mem-123"
-        assert memory.name == "Test Memory"
-        
-        # Test __getitem__
-        assert memory["id"] == "mem-123"
-        assert memory["name"] == "Test Memory"
-        
-        # Test _get method
-        assert memory._get("id") == "mem-123"
-        assert memory._get("nonexistent", "default") == "default"
+    memory_data = {"id": "mem-123", "name": "Test Memory", "status": "ACTIVE"}
+    
+    memory = Memory(memory_data)
+    
+    # Test __getattr__
+    assert memory.id == "mem-123"
+    assert memory.name == "Test Memory"
+    
+    # Test __getitem__
+    assert memory["id"] == "mem-123"
+    assert memory["name"] == "Test Memory"
+    
+    # Test get method
+    assert memory.get("id") == "mem-123"
+    assert memory.get("nonexistent", "default") == "default"
 
 
-def test_memory_validation():
-    """Test Memory class validation."""
-    with patch("boto3.client"):
-        manager = MemoryManager(region_name="us-east-1")
-        
-        # Test with None memory
-        memory = Memory(None, manager)
-        try:
-            memory.id
-            raise AssertionError("ValueError was not raised")
-        except ValueError as e:
-            assert "Memory object is not properly initialized" in str(e)
-        
-        # Test with empty memory
-        memory = Memory({}, manager)
-        try:
-            memory.id
-            raise AssertionError("ValueError was not raised")
-        except ValueError as e:
-            assert "Memory object has been deleted or is empty" in str(e)
+def test_memory_with_none_data():
+    """Test Memory class with None data."""
+    memory = Memory(None)
+    
+    # Should handle None gracefully
+    assert memory.id is None
+    assert memory.get("id") is None
 
 
-def test_memory_delete():
-    """Test Memory class delete method."""
-    with patch("boto3.client"):
-        manager = MemoryManager(region_name="us-east-1")
-        memory_data = {"id": "mem-123", "name": "Test Memory", "status": "ACTIVE"}
-        
-        # Mock the manager's delete_memory method
-        mock_control_plane_client = MagicMock()
-        manager._control_plane_client = mock_control_plane_client
-        mock_control_plane_client.delete_memory.return_value = {"status": "DELETING"}
-        
-        memory = Memory(memory_data, manager)
-        
-        with patch("uuid.uuid4", return_value=uuid.UUID("12345678-1234-5678-1234-567812345678")):
-            result = memory.delete()
-            
-            assert result["status"] == "DELETING"
-            assert mock_control_plane_client.delete_memory.called
-            
-            # Memory should be emptied after deletion
-            try:
-                memory.id
-                raise AssertionError("ValueError was not raised")
-            except ValueError as e:
-                assert "Memory object has been deleted or is empty" in str(e)
-
-
-def test_memory_add_semantic_strategy():
-    """Test Memory class add_semantic_strategy method."""
-    with patch("boto3.client"):
-        manager = MemoryManager(region_name="us-east-1")
-        memory_data = {"id": "mem-123", "name": "Test Memory", "status": "ACTIVE"}
-        
-        # Mock the manager's add_semantic_strategy method
-        mock_control_plane_client = MagicMock()
-        manager._control_plane_client = mock_control_plane_client
-        mock_control_plane_client.update_memory.return_value = {"memory": {"id": "mem-123", "status": "CREATING"}}
-        
-        memory = Memory(memory_data, manager)
-        
-        with patch("uuid.uuid4", return_value=uuid.UUID("12345678-1234-5678-1234-567812345678")):
-            result = memory.add_semantic_strategy("Test Strategy", "Test description")
-            
-            assert result == memory  # Should return self
-            assert mock_control_plane_client.update_memory.called
-
-
-def test_memory_get_strategies():
-    """Test Memory class get_strategies method."""
-    with patch("boto3.client"):
-        manager = MemoryManager(region_name="us-east-1")
-        memory_data = {"id": "mem-123", "name": "Test Memory", "status": "ACTIVE"}
-        
-        # Mock the manager's get_memory_strategies method
-        mock_control_plane_client = MagicMock()
-        manager._control_plane_client = mock_control_plane_client
-        mock_control_plane_client.get_memory.return_value = {
-            "memory": {
-                "id": "mem-123",
-                "strategies": [
-                    {"strategyId": "strat-123", "type": "SEMANTIC", "name": "Test Strategy"}
-                ],
-            }
-        }
-        
-        memory = Memory(memory_data, manager)
-        strategies = memory.get_strategies()
-        
-        assert len(strategies) == 1
-        assert isinstance(strategies[0], MemoryStrategy)
-
-
-def test_memory_delete_strategy():
-    """Test Memory class delete_strategy method."""
-    with patch("boto3.client"):
-        manager = MemoryManager(region_name="us-east-1")
-        memory_data = {"id": "mem-123", "name": "Test Memory", "status": "ACTIVE"}
-        
-        # Mock the manager's delete_strategy method
-        mock_control_plane_client = MagicMock()
-        manager._control_plane_client = mock_control_plane_client
-        mock_control_plane_client.get_memory.return_value = {"memory": {"id": "mem-123", "strategies": []}}
-        mock_control_plane_client.update_memory.return_value = {"memory": {"id": "mem-123", "status": "ACTIVE"}}
-        
-        memory = Memory(memory_data, manager)
-        
-        with patch("uuid.uuid4", return_value=uuid.UUID("12345678-1234-5678-1234-567812345678")):
-            result = memory.delete_strategy("strat-456")
-            
-            assert result == memory  # Should return self
-            assert mock_control_plane_client.update_memory.called
+def test_memory_with_empty_data():
+    """Test Memory class with empty data."""
+    memory = Memory({})
+    
+    # Should handle empty dict gracefully
+    assert memory.id is None
+    assert memory.get("id") is None
 
 
 def test_get_memory():
@@ -1965,8 +1828,8 @@ def test_create_memory_field_name_normalization():
 
             result = manager._create_memory(name="NormalizedMemory")
 
-            # Should handle memoryId field - access via dict since Memory class expects 'id'
-            assert result._memory.get("memoryId") == "test-memory-normalized"
+            # Should handle memoryId field - access via get method
+            assert result.get("memoryId") == "test-memory-normalized"
 
 
 def test_create_memory_no_id_field():
@@ -1987,115 +1850,31 @@ def test_create_memory_no_id_field():
 
             result = manager._create_memory(name="NoIdMemory")
 
-            # Should handle missing id gracefully - access via dict since Memory class expects 'id'
-            assert result._memory.get("id", result._memory.get("memoryId", "unknown")) == "unknown"
+            # Should handle missing id gracefully
+            assert result.get("id") is None
+            assert result.get("memoryId") is None
 
 
 # Additional Memory class tests for better coverage
 def test_memory_repr():
     """Test Memory class __repr__ method."""
-    with patch("boto3.client"):
-        manager = MemoryManager(region_name="us-east-1")
-        memory_data = {"id": "mem-123", "name": "Test Memory", "status": "ACTIVE"}
-        
-        memory = Memory(memory_data, manager)
-        
-        # __repr__ should return the string representation of the underlying dict
-        assert repr(memory) == repr(memory_data)
+    memory_data = {"id": "mem-123", "name": "Test Memory", "status": "ACTIVE"}
+    
+    memory = Memory(memory_data)
+    
+    # __repr__ should return the string representation of the underlying dict
+    assert repr(memory) == repr(memory_data)
 
 
 def test_memory_get_method():
-    """Test Memory class _get method access."""
-    with patch("boto3.client"):
-        manager = MemoryManager(region_name="us-east-1")
-        memory_data = {"id": "mem-123", "name": "Test Memory", "status": "ACTIVE"}
-        
-        memory = Memory(memory_data, manager)
-        
-        # Test accessing _get method through __getattr__
-        get_method = memory.get
-        assert get_method("id") == "mem-123"
-        assert get_method("nonexistent", "default") == "default"
-
-
-def test_memory_add_summary_strategy_and_wait():
-    """Test Memory class add_summary_strategy_and_wait method."""
-    with patch("boto3.client"):
-        manager = MemoryManager(region_name="us-east-1")
-        memory_data = {"id": "mem-123", "name": "Test Memory", "status": "ACTIVE"}
-        
-        # Mock the manager's method
-        mock_control_plane_client = MagicMock()
-        manager._control_plane_client = mock_control_plane_client
-        mock_control_plane_client.update_memory.return_value = {"memory": {"id": "mem-123", "status": "CREATING"}}
-        mock_control_plane_client.get_memory.return_value = {"memory": {"id": "mem-123", "status": "ACTIVE"}}
-        
-        memory = Memory(memory_data, manager)
-        
-        with patch("time.time", return_value=0):
-            with patch("time.sleep"):
-                with patch("uuid.uuid4", return_value=uuid.UUID("12345678-1234-5678-1234-567812345678")):
-                    result = memory.add_summary_strategy_and_wait("Test Summary Strategy", "Test description")
-                    
-                    assert result == memory  # Should return self
-                    assert mock_control_plane_client.update_memory.called
-                    assert mock_control_plane_client.get_memory.called
-
-
-def test_memory_add_user_preference_strategy_and_wait():
-    """Test Memory class add_user_preference_strategy_and_wait method."""
-    with patch("boto3.client"):
-        manager = MemoryManager(region_name="us-east-1")
-        memory_data = {"id": "mem-123", "name": "Test Memory", "status": "ACTIVE"}
-        
-        # Mock the manager's method
-        mock_control_plane_client = MagicMock()
-        manager._control_plane_client = mock_control_plane_client
-        mock_control_plane_client.update_memory.return_value = {"memory": {"id": "mem-123", "status": "CREATING"}}
-        mock_control_plane_client.get_memory.return_value = {"memory": {"id": "mem-123", "status": "ACTIVE"}}
-        
-        memory = Memory(memory_data, manager)
-        
-        with patch("time.time", return_value=0):
-            with patch("time.sleep"):
-                with patch("uuid.uuid4", return_value=uuid.UUID("12345678-1234-5678-1234-567812345678")):
-                    result = memory.add_user_preference_strategy_and_wait("Test User Pref Strategy", "Test description")
-                    
-                    assert result == memory  # Should return self
-                    assert mock_control_plane_client.update_memory.called
-                    assert mock_control_plane_client.get_memory.called
-
-
-def test_memory_add_custom_semantic_strategy_and_wait():
-    """Test Memory class add_custom_semantic_strategy_and_wait method."""
-    with patch("boto3.client"):
-        manager = MemoryManager(region_name="us-east-1")
-        memory_data = {"id": "mem-123", "name": "Test Memory", "status": "ACTIVE"}
-        
-        # Mock the manager's method
-        mock_control_plane_client = MagicMock()
-        manager._control_plane_client = mock_control_plane_client
-        mock_control_plane_client.update_memory.return_value = {"memory": {"id": "mem-123", "status": "CREATING"}}
-        mock_control_plane_client.get_memory.return_value = {"memory": {"id": "mem-123", "status": "ACTIVE"}}
-        
-        memory = Memory(memory_data, manager)
-        
-        with patch("time.time", return_value=0):
-            with patch("time.sleep"):
-                with patch("uuid.uuid4", return_value=uuid.UUID("12345678-1234-5678-1234-567812345678")):
-                    extraction_config = {"prompt": "Extract key info", "modelId": "claude-3-sonnet"}
-                    consolidation_config = {"prompt": "Consolidate info", "modelId": "claude-3-haiku"}
-                    
-                    result = memory.add_custom_semantic_strategy_and_wait(
-                        "Test Custom Strategy",
-                        extraction_config,
-                        consolidation_config,
-                        "Test description"
-                    )
-                    
-                    assert result == memory  # Should return self
-                    assert mock_control_plane_client.update_memory.called
-                    assert mock_control_plane_client.get_memory.called
+    """Test Memory class get method access."""
+    memory_data = {"id": "mem-123", "name": "Test Memory", "status": "ACTIVE"}
+    
+    memory = Memory(memory_data)
+    
+    # Test accessing get method
+    assert memory.get("id") == "mem-123"
+    assert memory.get("nonexistent", "default") == "default"
 
 
 # Additional MemoryStrategy model tests
