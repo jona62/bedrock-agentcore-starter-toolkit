@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.12] - 2025-09-18
+
+### Changes
+
+- docs: address feedback and improve Runtime/Gateway documentation (#163) (a422708)
+- chore: bump version to 0.1.11 (#180) (4e94d63)
+
+## [0.1.11] - 2025-09-18
+
+
+### Dependencies
+- Updated to bedrock-agentcore SDK v0.1.4
+
 ## [0.1.10] - 2025-09-08
 
 ### Changes
