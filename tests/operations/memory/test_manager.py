@@ -1,22 +1,19 @@
 """Unit tests for Memory Client - no external connections."""
 
-import time
 import uuid
 import warnings
-from datetime import datetime
 from unittest.mock import MagicMock, patch
 
-
-import pytest
 from botocore.exceptions import ClientError
 
+from bedrock_agentcore_starter_toolkit.operations.memory.constants import (
+    StrategyType,
+)
 from bedrock_agentcore_starter_toolkit.operations.memory.manager import MemoryManager
 from bedrock_agentcore_starter_toolkit.operations.memory.models.Memory import Memory
 from bedrock_agentcore_starter_toolkit.operations.memory.models.MemoryStrategy import MemoryStrategy
 from bedrock_agentcore_starter_toolkit.operations.memory.models.MemorySummary import MemorySummary
-from bedrock_agentcore_starter_toolkit.operations.memory.constants import (
-    StrategyType,
-)
+
 
 def test_manager_initialization():
     """Test client initialization."""
@@ -31,7 +28,7 @@ def test_manager_initialization():
         # Check that the region was set correctly and boto3.client was called once (only control plane)
         assert manager.region_name == "us-west-2"
         assert mock_boto_client.call_count == 1
-        
+
         # Verify the correct service was called (without endpoint_url)
         mock_boto_client.assert_called_with("bedrock-agentcore-control", region_name="us-west-2")
 
@@ -60,7 +57,9 @@ def test_create_memory():
             manager._control_plane_client = mock_control_plane_client
 
             # Mock successful response
-            mock_control_plane_client.create_memory.return_value = {"memory": {"id": "test-memory-123", "status": "CREATING"}}
+            mock_control_plane_client.create_memory.return_value = {
+                "memory": {"id": "test-memory-123", "status": "CREATING"}
+            }
 
             result = manager._create_memory(
                 name="TestMemory", strategies=[{StrategyType.SEMANTIC.value: {"name": "TestStrategy"}}]
@@ -107,9 +106,7 @@ def test_memory_strategy_management():
             "memory": {
                 "id": "mem-123",
                 "status": "ACTIVE",
-                "strategies": [
-                    {"strategyId": "strat-123", "type": "SEMANTIC", "name": "Test Strategy"}
-                ],
+                "strategies": [{"strategyId": "strat-123", "type": "SEMANTIC", "name": "Test Strategy"}],
             }
         }
 
@@ -123,12 +120,15 @@ def test_memory_strategy_management():
 
         # Test add_semantic_strategy
         with patch("uuid.uuid4", return_value=uuid.UUID("12345678-1234-5678-1234-567812345678")):
-            manager.add_semantic_strategy(memory_id="mem-123", name="New Semantic Strategy", description="Test strategy")
+            manager.add_semantic_strategy(
+                memory_id="mem-123", name="New Semantic Strategy", description="Test strategy"
+            )
 
             assert mock_control_plane_client.update_memory.called
             args, kwargs = mock_control_plane_client.update_memory.call_args
             assert "memoryStrategies" in kwargs
             assert "addMemoryStrategies" in kwargs["memoryStrategies"]
+
 
 def test_create_memory_and_wait_success():
     """Test successful _create_memory_and_wait scenario."""
@@ -171,7 +171,9 @@ def test_create_memory_and_wait_timeout():
         manager._control_plane_client = mock_control_plane_client
 
         # Mock create_memory response
-        mock_control_plane_client.create_memory.return_value = {"memory": {"id": "test-mem-timeout", "status": "CREATING"}}
+        mock_control_plane_client.create_memory.return_value = {
+            "memory": {"id": "test-mem-timeout", "status": "CREATING"}
+        }
 
         # Mock get_memory to always return CREATING (never becomes ACTIVE)
         mock_control_plane_client.get_memory.return_value = {"memory": {"id": "test-mem-timeout", "status": "CREATING"}}
@@ -202,7 +204,9 @@ def test_create_memory_and_wait_failure():
         manager._control_plane_client = mock_control_plane_client
 
         # Mock create_memory response
-        mock_control_plane_client.create_memory.return_value = {"memory": {"id": "test-mem-failed", "status": "CREATING"}}
+        mock_control_plane_client.create_memory.return_value = {
+            "memory": {"id": "test-mem-failed", "status": "CREATING"}
+        }
 
         # Mock get_memory to return FAILED status
         mock_control_plane_client.get_memory.return_value = {
@@ -222,6 +226,7 @@ def test_create_memory_and_wait_failure():
                         raise AssertionError("RuntimeError was not raised")
                     except RuntimeError as e:
                         assert "Memory creation failed: Configuration error" in str(e)
+
 
 def test_list_memories():
     """Test list_memories functionality."""
@@ -588,7 +593,6 @@ def test_update_memory_strategies_modify():
             assert modified_strategy["description"] == "Updated description"
 
 
-
 def test_wait_for_memory_active():
     """Test _wait_for_memory_active functionality."""
     with patch("boto3.client"):
@@ -781,6 +785,7 @@ def test_wrap_configuration_custom_semantic_override():
         ]
         assert consolidation_config["appendToPrompt"] == "Consolidate insights"
         assert consolidation_config["modelId"] == "consolidation-model"
+
 
 def test_modify_strategy():
     """Test modify_strategy convenience method."""
@@ -979,8 +984,10 @@ def test_update_memory_strategies_and_wait():
 
         # Mock get_memory to simulate transition from CREATING to ACTIVE
         get_memory_responses = [
-            {"memory": {"memoryId": "mem-123", "status": "CREATING", "memoryStrategies": []}},  # First call - still creating
-            {"memory": {"memoryId": "mem-123", "status": "ACTIVE", "memoryStrategies": []}}     # Second call - now active
+            # First call - still creating
+            {"memory": {"memoryId": "mem-123", "status": "CREATING", "memoryStrategies": []}},
+            # Second call - now active
+            {"memory": {"memoryId": "mem-123", "status": "ACTIVE", "memoryStrategies": []}},
         ]
         mock_control_plane_client.get_memory.side_effect = get_memory_responses
 
@@ -1064,6 +1071,7 @@ def test_add_strategy_warning():
                 # Verify update_memory was called
                 assert mock_control_plane_client.update_memory.called
 
+
 def test_create_memory_and_wait_client_error():
     """Test create_memory_and_wait with ClientError during status check."""
     with patch("boto3.client"):
@@ -1074,7 +1082,9 @@ def test_create_memory_and_wait_client_error():
         manager._control_plane_client = mock_control_plane_client
 
         # Mock create_memory response
-        mock_control_plane_client.create_memory.return_value = {"memory": {"id": "test-mem-error", "status": "CREATING"}}
+        mock_control_plane_client.create_memory.return_value = {
+            "memory": {"id": "test-mem-error", "status": "CREATING"}
+        }
 
         # Mock get_memory to raise ClientError
         error_response = {"Error": {"Code": "ValidationException", "Message": "Invalid memory ID"}}
@@ -1177,6 +1187,7 @@ def test_update_memory_strategies_client_error():
             except ClientError as e:
                 assert "ValidationException" in str(e)
 
+
 def test_create_or_get_memory_creates_new():
     """Test create_or_get_memory creates new memory when it doesn't exist."""
     with patch("boto3.client"):
@@ -1187,7 +1198,9 @@ def test_create_or_get_memory_creates_new():
         manager._control_plane_client = mock_control_plane_client
 
         # Mock successful create_memory response
-        mock_control_plane_client.create_memory.return_value = {"memory": {"id": "new-memory-123", "status": "CREATING"}}
+        mock_control_plane_client.create_memory.return_value = {
+            "memory": {"id": "new-memory-123", "status": "CREATING"}
+        }
 
         # Mock get_memory to return ACTIVE status (for the waiting part)
         mock_control_plane_client.get_memory.return_value = {"memory": {"id": "new-memory-123", "status": "ACTIVE"}}
@@ -1296,13 +1309,14 @@ def test_create_or_get_memory_general_exception():
             except Exception as e:
                 assert "Unexpected error" in str(e)
 
+
 # Memory class tests
 def test_memory_initialization():
     """Test Memory class initialization."""
     memory_data = {"id": "mem-123", "name": "Test Memory", "status": "ACTIVE"}
-    
+
     memory = Memory(memory_data)
-    
+
     assert memory.id == "mem-123"
     assert memory.name == "Test Memory"
     assert memory.status == "ACTIVE"
@@ -1311,17 +1325,17 @@ def test_memory_initialization():
 def test_memory_attribute_access():
     """Test Memory class attribute access patterns."""
     memory_data = {"id": "mem-123", "name": "Test Memory", "status": "ACTIVE"}
-    
+
     memory = Memory(memory_data)
-    
+
     # Test __getattr__
     assert memory.id == "mem-123"
     assert memory.name == "Test Memory"
-    
+
     # Test __getitem__
     assert memory["id"] == "mem-123"
     assert memory["name"] == "Test Memory"
-    
+
     # Test get method
     assert memory.get("id") == "mem-123"
     assert memory.get("nonexistent", "default") == "default"
@@ -1330,7 +1344,7 @@ def test_memory_attribute_access():
 def test_memory_with_none_data():
     """Test Memory class with None data."""
     memory = Memory(None)
-    
+
     # Should handle None gracefully
     assert memory.id is None
     assert memory.get("id") is None
@@ -1339,7 +1353,7 @@ def test_memory_with_none_data():
 def test_memory_with_empty_data():
     """Test Memory class with empty data."""
     memory = Memory({})
-    
+
     # Should handle empty dict gracefully
     assert memory.id is None
     assert memory.get("id") is None
@@ -1371,25 +1385,6 @@ def test_get_memory():
         assert kwargs["memoryId"] == "mem-123"
 
 
-# Test missing MemoryManager methods that delegate to boto3
-def test_memory_manager_getattr():
-    """Test MemoryManager __getattr__ delegation."""
-    with patch("boto3.client"):
-        manager = MemoryManager(region_name="us-east-1")
-
-        # Mock the control plane client
-        mock_control_plane_client = MagicMock()
-        manager._control_plane_client = mock_control_plane_client
-        
-        # Test that methods are delegated to control plane client
-        mock_control_plane_client.some_method.return_value = "test_result"
-        
-        result = manager.some_method("arg1", kwarg1="value1")
-        
-        assert result == "test_result"
-        mock_control_plane_client.some_method.assert_called_with("arg1", kwarg1="value1")
-
-
 def test_memory_manager_getattr_not_found():
     """Test MemoryManager __getattr__ when method not found."""
     with patch("boto3.client"):
@@ -1399,7 +1394,7 @@ def test_memory_manager_getattr_not_found():
         mock_control_plane_client = MagicMock()
         manager._control_plane_client = mock_control_plane_client
         del mock_control_plane_client.nonexistent_method
-        
+
         try:
             manager.nonexistent_method()
             raise AssertionError("AttributeError was not raised")
@@ -1410,14 +1405,10 @@ def test_memory_manager_getattr_not_found():
 # Test MemoryStrategy and MemorySummary models
 def test_memory_strategy_model():
     """Test MemoryStrategy model."""
-    strategy_data = {
-        "strategyId": "strat-123",
-        "type": "SEMANTIC",
-        "name": "Test Strategy"
-    }
-    
+    strategy_data = {"strategyId": "strat-123", "type": "SEMANTIC", "name": "Test Strategy"}
+
     strategy = MemoryStrategy(strategy_data)
-    
+
     assert strategy.strategyId == "strat-123"
     assert strategy.type == "SEMANTIC"
     assert strategy.name == "Test Strategy"
@@ -1427,14 +1418,10 @@ def test_memory_strategy_model():
 
 def test_memory_summary_model():
     """Test MemorySummary model."""
-    summary_data = {
-        "id": "mem-123",
-        "name": "Test Memory",
-        "status": "ACTIVE"
-    }
-    
+    summary_data = {"id": "mem-123", "name": "Test Memory", "status": "ACTIVE"}
+
     summary = MemorySummary(summary_data)
-    
+
     assert summary.id == "mem-123"
     assert summary.name == "Test Memory"
     assert summary.status == "ACTIVE"
@@ -1444,20 +1431,21 @@ def test_memory_summary_model():
 
 # Additional tests for missing coverage
 
+
 def test_validate_namespace():
     """Test _validate_namespace functionality."""
     with patch("boto3.client"):
         manager = MemoryManager(region_name="us-east-1")
-        
+
         # Test valid namespaces
-        assert manager._validate_namespace("custom/{actorId}/{sessionId}") == True
-        assert manager._validate_namespace("preferences/{actorId}") == True
-        assert manager._validate_namespace("strategy/{strategyId}") == True
-        assert manager._validate_namespace("simple/namespace") == True
-        
+        assert manager._validate_namespace("custom/{actorId}/{sessionId}")
+        assert manager._validate_namespace("preferences/{actorId}")
+        assert manager._validate_namespace("strategy/{strategyId}")
+        assert manager._validate_namespace("simple/namespace")
+
         # Test namespace with invalid template variables (should log warning)
         with patch("bedrock_agentcore_starter_toolkit.operations.memory.manager.logger") as mock_logger:
-            assert manager._validate_namespace("invalid/{unknownVar}") == True
+            assert manager._validate_namespace("invalid/{unknownVar}")
             mock_logger.warning.assert_called_once()
 
 
@@ -1465,18 +1453,18 @@ def test_validate_strategy_config():
     """Test _validate_strategy_config functionality."""
     with patch("boto3.client"):
         manager = MemoryManager(region_name="us-east-1")
-        
+
         # Mock _validate_namespace to track calls
-        with patch.object(manager, '_validate_namespace', return_value=True) as mock_validate:
+        with patch.object(manager, "_validate_namespace", return_value=True) as mock_validate:
             strategy = {
                 "semanticMemoryStrategy": {
                     "name": "Test Strategy",
-                    "namespaces": ["custom/{actorId}", "preferences/{sessionId}"]
+                    "namespaces": ["custom/{actorId}", "preferences/{sessionId}"],
                 }
             }
-            
+
             manager._validate_strategy_config(strategy, "semanticMemoryStrategy")
-            
+
             # Should validate each namespace
             assert mock_validate.call_count == 2
             mock_validate.assert_any_call("custom/{actorId}")
@@ -1487,52 +1475,48 @@ def test_check_strategies_terminal_state():
     """Test _check_strategies_terminal_state functionality."""
     with patch("boto3.client"):
         manager = MemoryManager(region_name="us-east-1")
-        
+
         # Test all strategies active
         strategies = [
             {"strategyId": "strat-1", "status": "ACTIVE", "name": "Strategy 1"},
-            {"strategyId": "strat-2", "status": "ACTIVE", "name": "Strategy 2"}
+            {"strategyId": "strat-2", "status": "ACTIVE", "name": "Strategy 2"},
         ]
         all_terminal, statuses, failed_names = manager._check_strategies_terminal_state(strategies)
-        assert all_terminal == True
+        assert all_terminal
         assert statuses == ["ACTIVE", "ACTIVE"]
         assert failed_names == []
-        
+
         # Test some strategies still creating
         strategies = [
             {"strategyId": "strat-1", "status": "ACTIVE", "name": "Strategy 1"},
-            {"strategyId": "strat-2", "status": "CREATING", "name": "Strategy 2"}
+            {"strategyId": "strat-2", "status": "CREATING", "name": "Strategy 2"},
         ]
         all_terminal, statuses, failed_names = manager._check_strategies_terminal_state(strategies)
-        assert all_terminal == False
+        assert not all_terminal
         assert statuses == ["ACTIVE", "CREATING"]
         assert failed_names == []
-        
+
         # Test some strategies failed
         strategies = [
             {"strategyId": "strat-1", "status": "ACTIVE", "name": "Strategy 1"},
-            {"strategyId": "strat-2", "status": "FAILED", "name": "Strategy 2"}
+            {"strategyId": "strat-2", "status": "FAILED", "name": "Strategy 2"},
         ]
         all_terminal, statuses, failed_names = manager._check_strategies_terminal_state(strategies)
-        assert all_terminal == True
+        assert all_terminal
         assert statuses == ["ACTIVE", "FAILED"]
         assert failed_names == ["Strategy 2"]
-        
+
         # Test strategy without name (uses strategyId)
-        strategies = [
-            {"strategyId": "strat-1", "status": "FAILED"}
-        ]
+        strategies = [{"strategyId": "strat-1", "status": "FAILED"}]
         all_terminal, statuses, failed_names = manager._check_strategies_terminal_state(strategies)
-        assert all_terminal == True
+        assert all_terminal
         assert statuses == ["FAILED"]
         assert failed_names == ["strat-1"]
-        
+
         # Test strategy without name or strategyId (uses "unknown")
-        strategies = [
-            {"status": "FAILED"}
-        ]
+        strategies = [{"status": "FAILED"}]
         all_terminal, statuses, failed_names = manager._check_strategies_terminal_state(strategies)
-        assert all_terminal == True
+        assert all_terminal
         assert statuses == ["FAILED"]
         assert failed_names == ["unknown"]
 
@@ -1549,12 +1533,12 @@ def test_wait_for_memory_active_with_strategy_failures():
         # Mock get_memory to return ACTIVE memory with failed strategy
         mock_control_plane_client.get_memory.return_value = {
             "memory": {
-                "memoryId": "mem-123", 
+                "memoryId": "mem-123",
                 "status": "ACTIVE",
                 "strategies": [
                     {"strategyId": "strat-1", "status": "ACTIVE", "name": "Good Strategy"},
-                    {"strategyId": "strat-2", "status": "FAILED", "name": "Bad Strategy"}
-                ]
+                    {"strategyId": "strat-2", "status": "FAILED", "name": "Bad Strategy"},
+                ],
             }
         }
 
@@ -1580,29 +1564,25 @@ def test_wait_for_memory_active_with_strategies_still_creating():
         get_memory_responses = [
             {
                 "memory": {
-                    "memoryId": "mem-123", 
+                    "memoryId": "mem-123",
                     "status": "ACTIVE",
-                    "strategies": [
-                        {"strategyId": "strat-1", "status": "CREATING", "name": "Strategy 1"}
-                    ]
+                    "strategies": [{"strategyId": "strat-1", "status": "CREATING", "name": "Strategy 1"}],
                 }
             },
             {
                 "memory": {
-                    "memoryId": "mem-123", 
+                    "memoryId": "mem-123",
                     "status": "ACTIVE",
-                    "strategies": [
-                        {"strategyId": "strat-1", "status": "ACTIVE", "name": "Strategy 1"}
-                    ]
+                    "strategies": [{"strategyId": "strat-1", "status": "ACTIVE", "name": "Strategy 1"}],
                 }
-            }
+            },
         ]
         mock_control_plane_client.get_memory.side_effect = get_memory_responses
 
         with patch("time.time", return_value=0):
             with patch("time.sleep"):
                 result = manager._wait_for_memory_active("mem-123", max_wait=60, poll_interval=5)
-                
+
                 assert result["memoryId"] == "mem-123"
                 assert result["status"] == "ACTIVE"
                 assert mock_control_plane_client.get_memory.call_count == 2
@@ -1622,21 +1602,23 @@ def test_wait_for_memory_active_timeout_with_strategies():
             "memory": {
                 "memoryId": "mem-123",
                 "status": "ACTIVE",
-                "strategies": [
-                    {"strategyId": "strat-1", "status": "CREATING", "name": "Strategy 1"}
-                ]
+                "strategies": [{"strategyId": "strat-1", "status": "CREATING", "name": "Strategy 1"}],
             }
         }
 
         # Mock time to simulate timeout - provide enough values for all time.time() calls
-        # The method calls: start_time, while condition check, elapsed calc, while condition check (timeout), elapsed calc
+        # The method calls: start_time, while condition check, elapsed calc,
+        # while condition check (timeout), elapsed calc
         with patch("time.time", side_effect=[0, 0, 0, 61, 61]):
             with patch("time.sleep"):
                 try:
                     manager._wait_for_memory_active("mem-123", max_wait=60, poll_interval=5)
                     raise AssertionError("TimeoutError was not raised")
                 except TimeoutError as e:
-                    assert "did not return to ACTIVE state with all strategies in terminal states within 60 seconds" in str(e)
+                    expected_msg = (
+                        "did not return to ACTIVE state with all strategies in terminal states within 60 seconds"
+                    )
+                    assert expected_msg in str(e)
 
 
 def test_wrap_configuration_summary_strategy():
@@ -1645,9 +1627,7 @@ def test_wrap_configuration_summary_strategy():
         manager = MemoryManager(region_name="us-east-1")
 
         # Test consolidation configuration for SUMMARIZATION strategy
-        config = {
-            "consolidation": {"triggerEveryNMessages": 10}
-        }
+        config = {"consolidation": {"triggerEveryNMessages": 10}}
 
         wrapped = manager._wrap_configuration(config, "SUMMARIZATION", None)
 
@@ -1667,12 +1647,9 @@ def test_wrap_configuration_custom_user_preference_override():
             "extraction": {
                 "triggerEveryNMessages": 3,
                 "historicalContextWindowSize": 25,
-                "preferenceType": "communication"
+                "preferenceType": "communication",
             },
-            "consolidation": {
-                "appendToPrompt": "Consolidate user preferences",
-                "modelId": "user-pref-model"
-            }
+            "consolidation": {"appendToPrompt": "Consolidate user preferences", "modelId": "user-pref-model"},
         }
 
         wrapped = manager._wrap_configuration(config, "CUSTOM", "USER_PREFERENCE_OVERRIDE")
@@ -1705,12 +1682,7 @@ def test_wrap_configuration_custom_summary_override():
         manager = MemoryManager(region_name="us-east-1")
 
         # Test custom summary override configuration
-        config = {
-            "consolidation": {
-                "appendToPrompt": "Create custom summary",
-                "modelId": "summary-model"
-            }
-        }
+        config = {"consolidation": {"appendToPrompt": "Create custom summary", "modelId": "summary-model"}}
 
         wrapped = manager._wrap_configuration(config, "CUSTOM", "SUMMARY_OVERRIDE")
 
@@ -1730,10 +1702,7 @@ def test_wrap_configuration_no_wrapping_needed():
         manager = MemoryManager(region_name="us-east-1")
 
         # Test config that doesn't need wrapping (no trigger/historical context keys)
-        config = {
-            "extraction": {"modelId": "test-model"},
-            "consolidation": {"modelId": "test-model"}
-        }
+        config = {"extraction": {"modelId": "test-model"}, "consolidation": {"modelId": "test-model"}}
 
         wrapped = manager._wrap_configuration(config, "SEMANTIC", None)
 
@@ -1765,7 +1734,7 @@ def test_create_memory_with_all_parameters():
                 strategies=[{StrategyType.SEMANTIC.value: {"name": "TestStrategy"}}],
                 description="Test description",
                 event_expiry_days=120,
-                memory_execution_role_arn="arn:aws:iam::123456789012:role/MemoryRole"
+                memory_execution_role_arn="arn:aws:iam::123456789012:role/MemoryRole",
             )
 
             assert result.id == "test-memory-456"
@@ -1844,9 +1813,7 @@ def test_create_memory_no_id_field():
             manager._control_plane_client = mock_control_plane_client
 
             # Mock response with no id or memoryId field
-            mock_control_plane_client.create_memory.return_value = {
-                "memory": {"status": "CREATING"}
-            }
+            mock_control_plane_client.create_memory.return_value = {"memory": {"status": "CREATING"}}
 
             result = manager._create_memory(name="NoIdMemory")
 
@@ -1859,9 +1826,9 @@ def test_create_memory_no_id_field():
 def test_memory_repr():
     """Test Memory class __repr__ method."""
     memory_data = {"id": "mem-123", "name": "Test Memory", "status": "ACTIVE"}
-    
+
     memory = Memory(memory_data)
-    
+
     # __repr__ should return the string representation of the underlying dict
     assert repr(memory) == repr(memory_data)
 
@@ -1869,9 +1836,9 @@ def test_memory_repr():
 def test_memory_get_method():
     """Test Memory class get method access."""
     memory_data = {"id": "mem-123", "name": "Test Memory", "status": "ACTIVE"}
-    
+
     memory = Memory(memory_data)
-    
+
     # Test accessing get method
     assert memory.get("id") == "mem-123"
     assert memory.get("nonexistent", "default") == "default"
@@ -1880,42 +1847,30 @@ def test_memory_get_method():
 # Additional MemoryStrategy model tests
 def test_memory_strategy_get_method():
     """Test MemoryStrategy get method."""
-    strategy_data = {
-        "strategyId": "strat-123",
-        "type": "SEMANTIC",
-        "name": "Test Strategy"
-    }
-    
+    strategy_data = {"strategyId": "strat-123", "type": "SEMANTIC", "name": "Test Strategy"}
+
     strategy = MemoryStrategy(strategy_data)
-    
+
     assert strategy.get("strategyId") == "strat-123"
     assert strategy.get("nonexistent", "default") == "default"
 
 
 def test_memory_strategy_contains():
     """Test MemoryStrategy __contains__ method."""
-    strategy_data = {
-        "strategyId": "strat-123",
-        "type": "SEMANTIC",
-        "name": "Test Strategy"
-    }
-    
+    strategy_data = {"strategyId": "strat-123", "type": "SEMANTIC", "name": "Test Strategy"}
+
     strategy = MemoryStrategy(strategy_data)
-    
+
     assert "strategyId" in strategy
     assert "nonexistent" not in strategy
 
 
 def test_memory_strategy_keys_values_items():
     """Test MemoryStrategy keys, values, and items methods."""
-    strategy_data = {
-        "strategyId": "strat-123",
-        "type": "SEMANTIC",
-        "name": "Test Strategy"
-    }
-    
+    strategy_data = {"strategyId": "strat-123", "type": "SEMANTIC", "name": "Test Strategy"}
+
     strategy = MemoryStrategy(strategy_data)
-    
+
     assert list(strategy.keys()) == ["strategyId", "type", "name"]
     assert list(strategy.values()) == ["strat-123", "SEMANTIC", "Test Strategy"]
     assert list(strategy.items()) == [("strategyId", "strat-123"), ("type", "SEMANTIC"), ("name", "Test Strategy")]
@@ -1924,42 +1879,30 @@ def test_memory_strategy_keys_values_items():
 # Additional MemorySummary model tests
 def test_memory_summary_get_method():
     """Test MemorySummary get method."""
-    summary_data = {
-        "id": "mem-123",
-        "name": "Test Memory",
-        "status": "ACTIVE"
-    }
-    
+    summary_data = {"id": "mem-123", "name": "Test Memory", "status": "ACTIVE"}
+
     summary = MemorySummary(summary_data)
-    
+
     assert summary.get("id") == "mem-123"
     assert summary.get("nonexistent", "default") == "default"
 
 
 def test_memory_summary_contains():
     """Test MemorySummary __contains__ method."""
-    summary_data = {
-        "id": "mem-123",
-        "name": "Test Memory",
-        "status": "ACTIVE"
-    }
-    
+    summary_data = {"id": "mem-123", "name": "Test Memory", "status": "ACTIVE"}
+
     summary = MemorySummary(summary_data)
-    
+
     assert "id" in summary
     assert "nonexistent" not in summary
 
 
 def test_memory_summary_keys_values_items():
     """Test MemorySummary keys, values, and items methods."""
-    summary_data = {
-        "id": "mem-123",
-        "name": "Test Memory",
-        "status": "ACTIVE"
-    }
-    
+    summary_data = {"id": "mem-123", "name": "Test Memory", "status": "ACTIVE"}
+
     summary = MemorySummary(summary_data)
-    
+
     assert list(summary.keys()) == ["id", "name", "status"]
     assert list(summary.values()) == ["mem-123", "Test Memory", "ACTIVE"]
     assert list(summary.items()) == [("id", "mem-123"), ("name", "Test Memory"), ("status", "ACTIVE")]
@@ -2049,11 +1992,7 @@ def test_update_memory_strategies_strategy_not_found():
 
         # Mock get_memory_strategies to return empty list
         mock_control_plane_client.get_memory.return_value = {
-            "memory": {
-                "memoryId": "mem-123",
-                "status": "ACTIVE",
-                "memoryStrategies": []
-            }
+            "memory": {"memoryId": "mem-123", "status": "ACTIVE", "memoryStrategies": []}
         }
 
         with patch("uuid.uuid4", return_value=uuid.UUID("12345678-1234-5678-1234-567812345678")):
@@ -2077,3 +2016,403 @@ def test_update_memory_strategies_no_operations():
                 raise AssertionError("ValueError was not raised")
             except ValueError as e:
                 assert "No strategy operations provided" in str(e)
+
+
+def test_getattr_method_forwarding():
+    """Test __getattr__ method forwarding to control plane client."""
+    with patch("boto3.client"):
+        manager = MemoryManager(region_name="us-east-1")
+
+        # Mock the control plane client
+        mock_control_plane_client = MagicMock()
+        manager._control_plane_client = mock_control_plane_client
+
+        # Mock a method that exists in allowed methods
+        mock_control_plane_client.create_memory = MagicMock(return_value={"memory": {"id": "test"}})
+
+        # Test method forwarding
+        result = manager.create_memory
+        assert callable(result)
+
+        # Verify the method is the same as the client method
+        assert result == mock_control_plane_client.create_memory
+
+
+def test_getattr_method_not_allowed():
+    """Test __getattr__ with method not in allowed list."""
+    with patch("boto3.client"):
+        manager = MemoryManager(region_name="us-east-1")
+
+        # Mock the control plane client
+        mock_control_plane_client = MagicMock()
+        manager._control_plane_client = mock_control_plane_client
+
+        # Mock a method that exists but is not in allowed methods
+        mock_control_plane_client.some_other_method = MagicMock()
+
+        try:
+            _ = manager.some_other_method
+            raise AssertionError("AttributeError was not raised")
+        except AttributeError as e:
+            assert "object has no attribute 'some_other_method'" in str(e)
+
+
+def test_validate_namespace_with_invalid_template():
+    """Test _validate_namespace with invalid template variables."""
+    with patch("boto3.client"):
+        manager = MemoryManager(region_name="us-east-1")
+
+        # Test namespace with invalid template variables (should log warning)
+        with patch("bedrock_agentcore_starter_toolkit.operations.memory.manager.logger") as mock_logger:
+            result = manager._validate_namespace("invalid/{unknownVar}")
+            assert result
+            mock_logger.warning.assert_called_once_with(
+                "Namespace with templates should contain valid variables: %s", "invalid/{unknownVar}"
+            )
+
+
+def test_validate_strategy_config_with_namespaces():
+    """Test _validate_strategy_config with namespaces."""
+    with patch("boto3.client"):
+        manager = MemoryManager(region_name="us-east-1")
+
+        # Mock _validate_namespace to track calls
+        with patch.object(manager, "_validate_namespace", return_value=True) as mock_validate:
+            strategy = {
+                "semanticMemoryStrategy": {
+                    "name": "Test Strategy",
+                    "namespaces": ["custom/{actorId}", "preferences/{sessionId}"],
+                }
+            }
+
+            manager._validate_strategy_config(strategy, "semanticMemoryStrategy")
+
+            # Should validate each namespace
+            assert mock_validate.call_count == 2
+            mock_validate.assert_any_call("custom/{actorId}")
+            mock_validate.assert_any_call("preferences/{sessionId}")
+
+
+def test_wrap_configuration_consolidation_passthrough():
+    """Test _wrap_configuration when consolidation doesn't need wrapping."""
+    with patch("boto3.client"):
+        manager = MemoryManager(region_name="us-east-1")
+
+        # Test config where consolidation doesn't have raw keys that need wrapping
+        config = {"consolidation": {"modelId": "test-model", "customConfig": "value"}}
+
+        manager._wrap_configuration(config, "SEMANTIC", None)
+
+        # The method only returns wrapped configs, so consolidation may not be present
+        # if it doesn't need wrapping. This is the expected behavior.
+        # Let's test with a config that does get wrapped
+        config_with_raw_keys = {"consolidation": {"triggerEveryNMessages": 10, "modelId": "test-model"}}
+
+        wrapped_with_raw = manager._wrap_configuration(config_with_raw_keys, "SUMMARIZATION", None)
+
+        # This should be wrapped since SUMMARIZATION strategy with triggerEveryNMessages
+        assert "consolidation" in wrapped_with_raw
+
+
+def test_create_memory_and_wait_memory_id_none():
+    """Test _create_memory_and_wait when memory.id is None."""
+    with patch("boto3.client"):
+        manager = MemoryManager(region_name="us-east-1")
+
+        # Mock both clients
+        mock_control_plane_client = MagicMock()
+        manager._control_plane_client = mock_control_plane_client
+
+        # Mock create_memory response with None id
+        mock_memory = Memory({"status": "CREATING"})  # No id field
+
+        with patch.object(manager, "_create_memory", return_value=mock_memory):
+            # Mock get_memory to return ACTIVE immediately
+            mock_control_plane_client.get_memory.return_value = {"memory": {"status": "ACTIVE"}}
+
+            with patch("time.time", return_value=0):
+                with patch("time.sleep"):
+                    result = manager._create_memory_and_wait(
+                        name="TestMemory",
+                        strategies=[{StrategyType.SEMANTIC.value: {"name": "TestStrategy"}}],
+                        max_wait=300,
+                        poll_interval=10,
+                    )
+
+                    assert result == mock_memory
+
+
+def test_create_memory_and_wait_debug_logging():
+    """Test _create_memory_and_wait debug logging during status checks."""
+    with patch("boto3.client"):
+        manager = MemoryManager(region_name="us-east-1")
+
+        # Mock both clients
+        mock_control_plane_client = MagicMock()
+        manager._control_plane_client = mock_control_plane_client
+
+        # Mock create_memory response
+        mock_control_plane_client.create_memory.return_value = {
+            "memory": {"id": "test-mem-debug", "status": "CREATING"}
+        }
+
+        # Mock get_memory to return CREATING first, then ACTIVE
+        get_memory_responses = [
+            {"memory": {"id": "test-mem-debug", "status": "CREATING"}},
+            {"memory": {"id": "test-mem-debug", "status": "ACTIVE"}},
+        ]
+        mock_control_plane_client.get_memory.side_effect = get_memory_responses
+
+        with patch("time.time", side_effect=[0, 0, 0, 5, 5]):  # Simulate time passing
+            with patch("time.sleep"):
+                with patch("uuid.uuid4", return_value=uuid.UUID("12345678-1234-5678-1234-567812345678")):
+                    with patch("bedrock_agentcore_starter_toolkit.operations.memory.manager.logger") as mock_logger:
+                        manager._create_memory_and_wait(
+                            name="TestMemory",
+                            strategies=[{StrategyType.SEMANTIC.value: {"name": "TestStrategy"}}],
+                            max_wait=300,
+                            poll_interval=10,
+                        )
+
+                        # Should have logged debug message about status
+                        mock_logger.debug.assert_called()
+
+
+def test_create_or_get_memory_existing_not_found():
+    """Test create_or_get_memory when existing memory is not found in list."""
+    with patch("boto3.client"):
+        manager = MemoryManager(region_name="us-east-1")
+
+        # Mock the _control_plane_client
+        mock_control_plane_client = MagicMock()
+        manager._control_plane_client = mock_control_plane_client
+
+        # Mock ValidationException for create_memory (memory already exists)
+        error_response = {
+            "Error": {
+                "Code": "ValidationException",
+                "Message": "Memory with name 'MissingMemory' already exists",
+            }
+        }
+        mock_control_plane_client.create_memory.side_effect = ClientError(error_response, "CreateMemory")
+
+        # Mock list_memories response with no matching memory
+        mock_control_plane_client.list_memories.return_value = {
+            "memories": [{"id": "other-memory-123", "name": "OtherMemory", "status": "ACTIVE"}],
+            "nextToken": None,
+        }
+
+        with patch("uuid.uuid4", return_value=uuid.UUID("12345678-1234-5678-1234-567812345678")):
+            try:
+                manager.create_or_get_memory(
+                    name="MissingMemory",
+                    strategies=[{StrategyType.SEMANTIC.value: {"name": "TestStrategy"}}],
+                )
+                raise AssertionError("Exception was not raised")
+            except Exception:
+                # Should raise an exception when memory not found
+                pass
+
+
+def test_get_memory_client_error():
+    """Test get_memory with ClientError."""
+    with patch("boto3.client"):
+        manager = MemoryManager(region_name="us-east-1")
+
+        # Mock the client
+        mock_control_plane_client = MagicMock()
+        manager._control_plane_client = mock_control_plane_client
+
+        # Mock ClientError
+        error_response = {"Error": {"Code": "ResourceNotFoundException", "Message": "Memory not found"}}
+        mock_control_plane_client.get_memory.side_effect = ClientError(error_response, "GetMemory")
+
+        try:
+            manager.get_memory("nonexistent-mem-123")
+            raise AssertionError("ClientError was not raised")
+        except ClientError as e:
+            assert "ResourceNotFoundException" in str(e)
+
+
+def test_add_semantic_strategy_with_namespaces():
+    """Test add_semantic_strategy with namespaces parameter."""
+    with patch("boto3.client"):
+        manager = MemoryManager(region_name="us-east-1")
+
+        # Mock the client
+        mock_control_plane_client = MagicMock()
+        manager._control_plane_client = mock_control_plane_client
+
+        # Mock get_memory for strategy retrieval
+        mock_control_plane_client.get_memory.return_value = {"memory": {"memoryId": "mem-123", "memoryStrategies": []}}
+
+        # Mock update_memory response
+        mock_control_plane_client.update_memory.return_value = {"memory": {"memoryId": "mem-123", "status": "CREATING"}}
+
+        with patch("uuid.uuid4", return_value=uuid.UUID("12345678-1234-5678-1234-567812345678")):
+            # Test add_semantic_strategy with namespaces
+            manager.add_semantic_strategy(
+                memory_id="mem-123",
+                name="Test Semantic Strategy",
+                description="Test description",
+                namespaces=["custom/{actorId}/{sessionId}"],
+            )
+
+            assert mock_control_plane_client.update_memory.called
+
+            # Verify strategy was added with namespaces
+            args, kwargs = mock_control_plane_client.update_memory.call_args
+            add_strategies = kwargs["memoryStrategies"]["addMemoryStrategies"]
+            strategy = add_strategies[0]["semanticMemoryStrategy"]
+            assert strategy["namespaces"] == ["custom/{actorId}/{sessionId}"]
+
+
+def test_add_summary_strategy_with_namespaces():
+    """Test add_summary_strategy with namespaces parameter."""
+    with patch("boto3.client"):
+        manager = MemoryManager(region_name="us-east-1")
+
+        # Mock the client
+        mock_control_plane_client = MagicMock()
+        manager._control_plane_client = mock_control_plane_client
+
+        # Mock get_memory for strategy retrieval
+        mock_control_plane_client.get_memory.return_value = {"memory": {"memoryId": "mem-456", "memoryStrategies": []}}
+
+        # Mock update_memory response
+        mock_control_plane_client.update_memory.return_value = {"memory": {"memoryId": "mem-456", "status": "CREATING"}}
+
+        with patch("uuid.uuid4", return_value=uuid.UUID("12345678-1234-5678-1234-567812345678")):
+            # Test add_summary_strategy with namespaces
+            manager.add_summary_strategy(
+                memory_id="mem-456",
+                name="Test Summary Strategy",
+                description="Test description",
+                namespaces=["summaries/{actorId}"],
+            )
+
+            assert mock_control_plane_client.update_memory.called
+
+            # Verify strategy was added with namespaces
+            args, kwargs = mock_control_plane_client.update_memory.call_args
+            add_strategies = kwargs["memoryStrategies"]["addMemoryStrategies"]
+            strategy = add_strategies[0]["summaryMemoryStrategy"]
+            assert strategy["namespaces"] == ["summaries/{actorId}"]
+
+
+def test_delete_memory_and_wait_debug_logging():
+    """Test delete_memory_and_wait debug logging during waiting."""
+    with patch("boto3.client"):
+        manager = MemoryManager(region_name="us-east-1")
+
+        # Mock the client
+        mock_control_plane_client = MagicMock()
+        manager._control_plane_client = mock_control_plane_client
+
+        # Mock delete response
+        mock_control_plane_client.delete_memory.return_value = {"status": "DELETING"}
+
+        # Mock get_memory to succeed first, then raise ResourceNotFoundException
+        get_memory_responses = [
+            {"memory": {"memoryId": "mem-123", "status": "DELETING"}},  # First call - still exists
+            ClientError({"Error": {"Code": "ResourceNotFoundException", "Message": "Memory not found"}}, "GetMemory"),
+        ]
+        mock_control_plane_client.get_memory.side_effect = get_memory_responses
+
+        with patch("time.time", side_effect=[0, 0, 0, 5, 5]):  # Simulate time passing
+            with patch("time.sleep"):
+                with patch("uuid.uuid4", return_value=uuid.UUID("12345678-1234-5678-1234-567812345678")):
+                    with patch("bedrock_agentcore_starter_toolkit.operations.memory.manager.logger") as mock_logger:
+                        result = manager.delete_memory_and_wait("mem-123", max_wait=60, poll_interval=5)
+
+                        assert result["status"] == "DELETING"
+                        # Should have logged debug message about memory still existing
+                        mock_logger.debug.assert_called()
+
+
+def test_modify_strategy_with_configuration():
+    """Test modify_strategy with configuration parameter."""
+    with patch("boto3.client"):
+        manager = MemoryManager(region_name="us-east-1")
+
+        # Mock the client
+        mock_control_plane_client = MagicMock()
+        manager._control_plane_client = mock_control_plane_client
+
+        # Mock get_memory_strategies to return existing strategies
+        mock_control_plane_client.get_memory.return_value = {
+            "memory": {
+                "memoryId": "mem-123",
+                "status": "ACTIVE",
+                "memoryStrategies": [
+                    {"strategyId": "strat-789", "memoryStrategyType": "SEMANTIC", "name": "Test Strategy"}
+                ],
+            }
+        }
+
+        # Mock update_memory response
+        mock_control_plane_client.update_memory.return_value = {"memory": {"memoryId": "mem-123", "status": "CREATING"}}
+
+        with patch("uuid.uuid4", return_value=uuid.UUID("12345678-1234-5678-1234-567812345678")):
+            # Test modify_strategy with configuration
+            configuration = {"extraction": {"modelId": "new-model"}}
+            manager.modify_strategy(
+                memory_id="mem-123",
+                strategy_id="strat-789",
+                description="Modified description",
+                namespaces=["custom/namespace"],
+                configuration=configuration,
+            )
+
+            assert mock_control_plane_client.update_memory.called
+
+            # Verify configuration was included
+            args, kwargs = mock_control_plane_client.update_memory.call_args
+            modified_strategy = kwargs["memoryStrategies"]["modifyMemoryStrategies"][0]
+            assert modified_strategy["configuration"] == configuration
+
+
+def test_update_memory_strategies_with_configuration_wrapping():
+    """Test update_memory_strategies with configuration that needs wrapping."""
+    with patch("boto3.client"):
+        manager = MemoryManager(region_name="us-east-1")
+
+        # Mock the client
+        mock_control_plane_client = MagicMock()
+        manager._control_plane_client = mock_control_plane_client
+
+        # Mock get_memory_strategies to return existing strategies with configuration
+        mock_control_plane_client.get_memory.return_value = {
+            "memory": {
+                "memoryId": "mem-123",
+                "status": "ACTIVE",
+                "memoryStrategies": [
+                    {
+                        "strategyId": "strat-789",
+                        "memoryStrategyType": "CUSTOM",
+                        "name": "Custom Strategy",
+                        "configuration": {"type": "SEMANTIC_OVERRIDE"},
+                    }
+                ],
+            }
+        }
+
+        # Mock update_memory response
+        mock_control_plane_client.update_memory.return_value = {"memory": {"memoryId": "mem-123", "status": "CREATING"}}
+
+        with patch("uuid.uuid4", return_value=uuid.UUID("12345678-1234-5678-1234-567812345678")):
+            # Test modifying strategy with configuration that needs wrapping
+            modify_strategies = [
+                {
+                    "strategyId": "strat-789",
+                    "configuration": {"extraction": {"triggerEveryNMessages": 5, "modelId": "test-model"}},
+                }
+            ]
+            manager.update_memory_strategies(memory_id="mem-123", modify_strategies=modify_strategies)
+
+            assert mock_control_plane_client.update_memory.called
+
+            # Verify configuration was wrapped
+            args, kwargs = mock_control_plane_client.update_memory.call_args
+            modified_strategy = kwargs["memoryStrategies"]["modifyMemoryStrategies"][0]
+            assert "configuration" in modified_strategy

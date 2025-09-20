@@ -1,26 +1,35 @@
+"""Memory Manager for AgentCore Memory resources."""
+
 import copy
-import boto3
 import logging
 import time
 import uuid
 import warnings
-
-from botocore.exceptions import ClientError
 from typing import Any, Dict, List, Optional
 
-from .models.Memory import Memory
-from .models.MemorySummary import MemorySummary
-from .models.MemoryStrategy import MemoryStrategy
+import boto3
+from botocore.exceptions import ClientError
+
 from .constants import DEFAULT_NAMESPACES, MemoryStatus, MemoryStrategyStatus, OverrideType, StrategyType
+from .models.Memory import Memory
+from .models.MemoryStrategy import MemoryStrategy
+from .models.MemorySummary import MemorySummary
 
 logger = logging.getLogger(__name__)
 
+
 class MemoryManager:
-    """
-    A high-level client for managing the lifecycle of AgentCore Memory resources.
+    """A high-level client for managing the lifecycle of AgentCore Memory resources.
+
     This class handles all CONTROL PLANE CRUD operations.
     """
+
     def __init__(self, region_name: str):
+        """Initialize MemoryManager with AWS region.
+
+        Args:
+            region_name: AWS region name for the bedrock-agentcore-control client.
+        """
         self.region_name = region_name
         self._control_plane_client = boto3.client("bedrock-agentcore-control", region_name=region_name)
 
@@ -31,7 +40,7 @@ class MemoryManager:
             "update_memory",
             "delete_memory",
         }
-        logger.info(f"✅ MemoryManager initialized for region: {region_name}")
+        logger.info("✅ MemoryManager initialized for region: %s", region_name)
 
     def __getattr__(self, name: str):
         """Dynamically forward method calls to the appropriate boto3 client.
@@ -57,8 +66,7 @@ class MemoryManager:
             response = manager.list_memories()
             memory = manager.get_memory(memoryId="mem-123")
         """
-
-        if hasattr(self._control_plane_client, name):
+        if name in self._ALLOWED_CONTROL_PLANE_METHODS and hasattr(self._control_plane_client, name):
             method = getattr(self._control_plane_client, name)
             logger.debug("Forwarding method '%s' to control_plane_client", name)
             return method
@@ -111,9 +119,7 @@ class MemoryManager:
                     override_enum = OverrideType(override_type)
                     wrapper_key = override_enum.extraction_wrapper_key()
                     if wrapper_key and override_type in ["SEMANTIC_OVERRIDE", "USER_PREFERENCE_OVERRIDE"]:
-                        wrapped_config["extraction"] = {
-                            "customExtractionConfiguration": {wrapper_key: extraction}
-                        }
+                        wrapped_config["extraction"] = {"customExtractionConfiguration": {wrapper_key: extraction}}
             else:
                 wrapped_config["extraction"] = extraction
 
@@ -126,9 +132,7 @@ class MemoryManager:
                     wrapper_key = StrategyType.SUMMARY.consolidation_wrapper_key()
                     if wrapper_key and "triggerEveryNMessages" in consolidation:
                         wrapped_config["consolidation"] = {
-                            wrapper_key: {
-                                "triggerEveryNMessages": consolidation["triggerEveryNMessages"]
-                            }
+                            wrapper_key: {"triggerEveryNMessages": consolidation["triggerEveryNMessages"]}
                         }
                 elif strategy_type == "CUSTOM" and override_type:
                     override_enum = OverrideType(override_type)
@@ -151,7 +155,8 @@ class MemoryManager:
         memory_execution_role_arn: Optional[str] = None,
     ) -> Memory:
         """Create a memory resource and return the raw response.
-        Maps to: bedrock-agentcore-control.create_memory
+
+        Maps to: bedrock-agentcore-control.create_memory.
         """
         if strategies is None:
             strategies = []
@@ -175,7 +180,7 @@ class MemoryManager:
             response = self._control_plane_client.create_memory(**params)
 
             memory = response["memory"]
-            
+
             # Handle field name normalization
             memory_id = memory.get("id", memory.get("memoryId", "unknown"))
             logger.info("Created memory: %s", memory_id)
@@ -316,17 +321,17 @@ class MemoryManager:
             raise
 
     def get_memory(self, memory_id: str) -> Memory:
+        """Retrieves an existing memory resource as a Memory object.
+
+        Maps to: bedrock-agentcore-control.get_memory.
         """
-        Retrieves an existing memory resource as a Memory object.
-        Maps to: bedrock-agentcore-control.get_memory
-        """
-        logger.info(f"🔎 Retrieving memory resource with ID: {memory_id}...")
+        logger.info("🔎 Retrieving memory resource with ID: %s...", memory_id)
         try:
             response = self._control_plane_client.get_memory(memoryId=memory_id).get("memory", {})
-            logger.info(f"  ✅ Found memory: {memory_id}")
+            logger.info("  ✅ Found memory: %s", memory_id)
             return Memory(response)
         except ClientError as e:
-            logger.error(f"  ❌ Error retrieving memory: {e}")
+            logger.error("  ❌ Error retrieving memory: %s", e)
             raise
 
     def get_memory_status(self, memory_id: str) -> str:
@@ -335,7 +340,7 @@ class MemoryManager:
             response = self._control_plane_client.get_memory(memoryId=memory_id)
             return response["memory"]["status"]
         except ClientError as e:
-            logger.error(f"  ❌ Error retrieving memory status: {e}")
+            logger.error("  ❌ Error retrieving memory status: %s", e)
             raise
 
     def get_memory_strategies(self, memory_id: str) -> List[MemoryStrategy]:
@@ -352,9 +357,9 @@ class MemoryManager:
             raise
 
     def list_memories(self, max_results: int = 100) -> list[MemorySummary]:
-        """
-        Lists all available memory resources.
-        Maps to: bedrock-agentcore-control.list_memories
+        """Lists all available memory resources.
+
+        Maps to: bedrock-agentcore-control.list_memories.
         """
         try:
             # Ensure max_results doesn't exceed API limit per request
@@ -368,7 +373,9 @@ class MemoryManager:
                 remaining = max_results - len(memory_summaries)
                 results_per_request = min(remaining, 100)
 
-                response = self._control_plane_client.list_memories(maxResults=results_per_request, nextToken=next_token)
+                response = self._control_plane_client.list_memories(
+                    maxResults=results_per_request, nextToken=next_token
+                )
                 memory_summaries.extend(response.get("memories", []))
                 next_token = response.get("nextToken")
 
@@ -383,21 +390,20 @@ class MemoryManager:
             return response
 
         except ClientError as e:
-            logger.error(f"  ❌ Error listing memories: {e}")
+            logger.error("  ❌ Error listing memories: %s", e)
             raise
-        
+
     def delete_memory(self, memory_id: str) -> Dict[str, Any]:
         """Delete a memory resource.
-        Maps to: bedrock-agentcore-control.delete_memory
+
+        Maps to: bedrock-agentcore-control.delete_memory.
         """
         try:
-            response = self._control_plane_client.delete_memory(
-                memoryId=memory_id, clientToken=str(uuid.uuid4())
-            )
+            response = self._control_plane_client.delete_memory(memoryId=memory_id, clientToken=str(uuid.uuid4()))
             logger.info("Deleted memory: %s", memory_id)
             return response
         except ClientError as e:
-            logger.error(f"  ❌ Error deleting memory: {e}")
+            logger.error("  ❌ Error deleting memory: %s", e)
             raise
 
     def delete_memory_and_wait(self, memory_id: str, max_wait: int = 300, poll_interval: int = 10) -> Dict[str, Any]:
@@ -760,36 +766,38 @@ class MemoryManager:
 
     def _check_strategies_terminal_state(self, strategies: List[Dict[str, Any]]) -> tuple[bool, List[str], List[str]]:
         """Check if all strategies are in terminal states.
-        
+
         Args:
             strategies: List of strategy dictionaries
-            
+
         Returns:
             Tuple of (all_terminal, strategy_statuses, failed_strategy_names)
         """
         all_strategies_terminal = True
         strategy_statuses = []
         failed_strategy_names = []
-        
+
         for strategy in strategies:
             strategy_status = strategy.get("status", "UNKNOWN")
             strategy_statuses.append(strategy_status)
-            
+
             # Check if strategy is in a terminal state
             if strategy_status not in [MemoryStrategyStatus.ACTIVE.value, MemoryStrategyStatus.FAILED.value]:
                 all_strategies_terminal = False
             elif strategy_status == MemoryStrategyStatus.FAILED.value:
                 strategy_name = strategy.get("name", strategy.get("strategyId", "unknown"))
                 failed_strategy_names.append(strategy_name)
-        
+
         return all_strategies_terminal, strategy_statuses, failed_strategy_names
 
     def _wait_for_memory_active(self, memory_id: str, max_wait: int, poll_interval: int) -> Memory:
         """Wait for memory to return to ACTIVE state and all strategies to reach terminal states."""
-        logger.info("Waiting for memory %s to return to ACTIVE state and strategies to reach terminal states...", memory_id)
+        logger.info(
+            "Waiting for memory %s to return to ACTIVE state and strategies to reach terminal states...", memory_id
+        )
 
         start_time = time.time()
-        
+
         while time.time() - start_time < max_wait:
             elapsed = int(time.time() - start_time)
 
@@ -806,20 +814,29 @@ class MemoryManager:
 
                 # Get strategies and check their statuses
                 strategies = memory.get("strategies", memory.get("memoryStrategies", []))
-                all_strategies_terminal, strategy_statuses, failed_strategy_names = self._check_strategies_terminal_state(strategies)
+                all_strategies_terminal, strategy_statuses, failed_strategy_names = (
+                    self._check_strategies_terminal_state(strategies)
+                )
 
                 # Log current status
-                logger.debug("Memory status: %s, Strategy statuses: %s (%d seconds elapsed)", 
-                           memory_status, strategy_statuses, elapsed)
+                logger.debug(
+                    "Memory status: %s, Strategy statuses: %s (%d seconds elapsed)",
+                    memory_status,
+                    strategy_statuses,
+                    elapsed,
+                )
 
                 # Check if memory is ACTIVE and all strategies are in terminal states
                 if memory_status == MemoryStatus.ACTIVE.value and all_strategies_terminal:
                     # Check if any strategy failed
                     if failed_strategy_names:
                         raise RuntimeError("Memory strategy(ies) failed: %s" % ", ".join(failed_strategy_names))
-                    
-                    logger.info("Memory %s is ACTIVE and all strategies are in terminal states (took %d seconds)", 
-                              memory_id, elapsed)
+
+                    logger.info(
+                        "Memory %s is ACTIVE and all strategies are in terminal states (took %d seconds)",
+                        memory_id,
+                        elapsed,
+                    )
                     return Memory(memory)
 
                 # Wait before next check
@@ -829,7 +846,10 @@ class MemoryManager:
                 logger.error("Error checking memory status: %s", e)
                 raise
 
-        raise TimeoutError("Memory %s did not return to ACTIVE state with all strategies in terminal states within %d seconds" % (memory_id, max_wait))
+        raise TimeoutError(
+            "Memory %s did not return to ACTIVE state with all strategies in terminal states within %d seconds"
+            % (memory_id, max_wait)
+        )
 
     def _add_default_namespaces(self, strategies: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Add default namespaces to strategies that don't have them."""

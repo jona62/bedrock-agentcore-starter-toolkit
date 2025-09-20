@@ -71,16 +71,6 @@ class OverrideType(Enum):
         return consolidation_keys.get(self)
 
 
-# Legacy enum for backward compatibility - can be removed in future versions
-class MemoryStrategyTypeEnum(Enum):
-    """Internal strategy type enum - DEPRECATED: Use StrategyType.get_memory_strategy() instead."""
-
-    SEMANTIC = "SEMANTIC"
-    SUMMARIZATION = "SUMMARIZATION"
-    USER_PREFERENCE = "USER_PREFERENCE"
-    CUSTOM = "CUSTOM"
-
-
 class MemoryStatus(Enum):
     """Memory resource statuses."""
 
